@@ -5,16 +5,18 @@ chefvm="chef-server"
 chefip="169.254.123.2"
 vmdiskloc="/opt/rpcs/chef-server.qcow2"
 backupdir="/backups/"
-#mins="10080"
-mins="10000"
+mins="30"
 
 if [ ! -d $backupdir ]
 then
   echo "$backupdir does not exist, creating."
   mkdir $backupdir
 fi
-
-if `find $backupdir -name $chefvm* -mmin +$mins` >/dev/null
+filetyme=""
+filetyme=$(find /backups/ -name '*qcow2.gz' -mmin +$mins)
+buexist=""
+buexist=$(find /backups/ -name '*qcow2.gz')
+if [ "$buexist" = "$filetyme" ] 
 then
   if ps auwx | grep $chefvm | grep -v grep | awk {'print $21'} | grep $chefvm >/dev/null
   then
