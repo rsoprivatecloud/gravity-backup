@@ -1,4 +1,4 @@
 blackhole-bu
 ============
 
-Backup utility for Rackspace OS private cloud customers.
+Backup utility for the Openstack chef server VM. 
