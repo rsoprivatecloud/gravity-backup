@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-
+#
 chefvm="chef-server"
 chefip="169.254.123.2"
 vmdiskloc="/opt/rpcs/chef-server.qcow2"
