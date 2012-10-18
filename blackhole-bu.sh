@@ -6,13 +6,17 @@ chefip="169.254.123.2"
 vmdiskloc="/opt/rpcs/chef-server.qcow2"
 backupdir="/backups/"
 #mins="10080"
-mins="1"
+mins="10000"
 
-#backup chef vm
-
-if ps auwx | grep $chefvm | grep -v grep | awk {'print $21'} | grep $chefvm >/dev/null
+if [ ! -d $backupdir ]
 then
-  if find $backupdir -name $chefvm* -mmin +$mins
+  echo "$backupdir does not exist, creating."
+  mkdir $backupdir
+fi
+
+if `find $backupdir -name $chefvm* -mmin +$mins` >/dev/null
+then
+  if ps auwx | grep $chefvm | grep -v grep | awk {'print $21'} | grep $chefvm >/dev/null
   then
     while ps auwx | grep $chefvm | grep -v grep | awk {'print $21'} | grep $chefvm >/dev/null
     do
@@ -22,21 +26,20 @@ then
     done
     if [ -f $vmdiskloc ]
     then
-      if [ ! -d $backupdir ]
-      then
-        echo "$backupdir does not exist, creating."
-        mkdir -p $backupdir
-      fi
       echo "Copying Chef VM and compressing the image. This may take some time."
       cat $vmdiskloc | gzip > $backupdir$chefvm-backup.qcow2.gz
       echo "Starting $chefvm"
       virsh start $chefvm >/dev/null
+      echo -e "$chefvm backup complete! Find it here: \n$backupdir$chefvm-backup.qcow2.gz"
+    else
+      echo "$vmdiskloc does not exist!"
+      exit 1
+    fi
   else
-    "Chef server VM not found!"
-    exit 1 
+    echo "Chef server VM not running, doing nothing."
   fi
-  else
-    echo "VM newer than $mins minutes old, skipping."
 else
-  echo "Chef server VM not running, doing nothing"
+   echo "$chefvm backup newer than $mins minutes, skipping."
 fi
+
+
