@@ -1,11 +1,29 @@
 #!/bin/bash
 #
 #
+
+#Tunable options##############################################
+
+#Name of the VM running Chef-Server
 chefvm="chef-server"
+
+#Internal IP for the Chef Server VM
 chefip="169.254.123.2"
+
+#Location of VM's disk
 vmdiskloc="/opt/rpcs/chef-server.qcow2"
+
+#Backup directory to dump backed up files
 backupdir="/backups/"
+
+#Number of minute before removing old backup files and rerunning the backup
+# 1 day = 1440
+# 1 week = 10080
+# 30 days = 43200
 mins="30"
+
+################################################################
+
 
 if [ ! -d $backupdir ]
 then
