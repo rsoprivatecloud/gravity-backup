@@ -14,9 +14,9 @@ chefip="169.254.123.2"
 vmdiskloc="/opt/rpcs/chef-server.qcow2"
 
 #Backup directory to dump backed up files
-backupdir="/backups/"
+backupdir="/backups"
 
-#Number of minute before removing old backup files and rerunning the backup
+#Number of minutes before removing old backup files and rerunning the backup
 # 1 day = 1440
 # 1 week = 10080
 # 30 days = 43200
@@ -31,10 +31,13 @@ then
   echo "$backupdir does not exist, creating."
   mkdir $backupdir
 fi
+
 filetyme=""
-filetyme=$(find /backups/ -name '*qcow2.gz' -mmin +$mins)
+filetyme=$(find $backupdir -name '*qcow2.gz' -mmin +$mins)
 buexist=""
-buexist=$(find /backups/ -name '*qcow2.gz')
+buexist=$(find $backupdir -name '*qcow2.gz')
+stats=0
+
 if [ "$buexist" = "$filetyme" ] 
 then
   if ps auwx | grep $chefvm | grep -v grep | awk {'print $21'} | grep $chefvm >/dev/null
@@ -42,16 +45,22 @@ then
     while ps auwx | grep $chefvm | grep -v grep | awk {'print $21'} | grep $chefvm >/dev/null
     do
       echo "Shutting down $chefvm VM."
+      stats=$[ $stats + 1 ]
+      if [ "$stats" == "10" ]
+      then
+        echo "$chefvm not shutting down! $chefvm not backup up!"
+        break 4
+      fi
       ssh rack@$chefip 'sudo shutdown -h now'
-      sleep 10
+      sleep 5
     done
     if [ -f $vmdiskloc ]
     then
       echo "Copying Chef VM and compressing the image. This may take some time."
-      cat $vmdiskloc | gzip > $backupdir$chefvm-backup.qcow2.gz
+      cat $vmdiskloc | gzip > $backupdir/$chefvm-backup.qcow2.gz
       echo "Starting $chefvm VM."
       virsh start $chefvm >/dev/null
-      echo -e "$chefvm VM backup complete! Find it here: $backupdir$chefvm-backup.qcow2.gz"
+      echo -e "$chefvm VM backup complete! Find it here: $backupdir/$chefvm-backup.qcow2.gz"
     else
       echo "$vmdiskloc does not exist!"
       exit 1
@@ -65,8 +74,16 @@ fi
 
 #get chef config files
 
+stats=0
+
 while ! ssh -q rack@$chefip 'hostname' >/dev/null
 do
+  stats=$[ $stats + 1 ]
+  if [ "$stats" == "10" ]
+  then
+    echo "$chefvm not starting, please investigate!"
+    exit 1
+  fi
   echo "Waiting for Chef VM to start..."
   sleep 10
 done
@@ -74,20 +91,22 @@ done
 if ssh rack@$chefip "find /home/rack/ -name  chef-backup-* -mmin $mins" >/dev/null
 then
   echo "Shutting down chef-server and couchdb."
-  ssh rack@$chefip 'sudo service chef-server stop; sudo service couchdb stop; sudo service chef-expander stop' >/dev/null 
+  ssh rack@$chefip 'sudo service chef-server stop; sudo service couchdb stop; sudo service chef-expander stop; sudo service chef-client stop; sudo service chef-server-webui stop; sudo service chef-solr stop' >/dev/null 
   echo "Removing old Chef backup."
   ssh rack@$chefip "rm -rf /home/rack/chef-backup-*"
-  rm -rf $backupdir"chef-backup-*"
+  rm -rf $backupdir/"chef-backup-*"
   echo "Creating new Chef backup. This may take some time."
-  ssh rack@$chefip 'sudo tar czPf chef-backup-`date +%Y-%m-%d-%s`.tar.gz /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef'
-  echo "Copying Chef backup to $backupdir"
-  scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir
+  ssh rack@$chefip 'sudo tar czPf chef-backup-`date +%Y-%m-%d`.tar.gz /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef'
+  echo "Copying Chef backup to $backupdir/"
+  scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/
   echo "Starting chef-server and couchdb."
-  ssh rack@$chefip 'sudo service chef-server start; sudo service couchdb start; sudo service chef-expander start' >/dev/null
-  echo "Chef file and couchdb backup complete. Find it here: `ls $backupdir'chef-backup-'*`"
+  ssh rack@$chefip 'sudo service chef-server start; sudo service couchdb start; sudo service chef-expander start; sudo service chef-client start; sudo service chef-server-webui start; sudo service chef-solr start' >/dev/null
+  echo "Chef file and couchdb backup complete. Find it here: `ls $backupdir'/chef-backup-'*`"
 else
   echo "Chef file backup newer than $mins minutes, skipping."
 fi
+
+#dump chef details to flat files
 
 
  
