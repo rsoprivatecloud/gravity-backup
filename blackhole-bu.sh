@@ -22,6 +22,10 @@ backupdir="/backups"
 # 30 days = 43200
 mins="300"
 
+#Topics to backup for chef
+
+topics="node environment client role cookbook" # "client role cookbook"
+
 ################################################################
 
 
@@ -31,6 +35,8 @@ then
   echo "$backupdir does not exist, creating."
   mkdir $backupdir
 fi
+
+echo '#################################################################'
 
 filetyme=""
 filetyme=$(find $backupdir -name '*qcow2.gz' -mmin +$mins)
@@ -51,7 +57,7 @@ then
         echo "$chefvm not shutting down! $chefvm not backup up!"
         break 4
       fi
-      ssh rack@$chefip 'sudo shutdown -h now'
+      ssh -q rack@$chefip 'sudo shutdown -h now'
       sleep 5
     done
     if [ -f $vmdiskloc ]
@@ -74,6 +80,8 @@ fi
 
 #get chef config files
 
+echo '#################################################################'
+
 stats=0
 
 while ! ssh -q rack@$chefip 'hostname' >/dev/null
@@ -85,7 +93,7 @@ do
     exit 1
   fi
   echo "Waiting for Chef VM to start..."
-  sleep 10
+  sleep 5
 done
 
 if ssh rack@$chefip "find /home/rack/ -name  chef-backup-* -mmin $mins" >/dev/null
@@ -97,7 +105,7 @@ then
   rm -rf $backupdir/"chef-backup-*"
   echo "Creating new Chef backup. This may take some time."
   ssh rack@$chefip 'sudo tar czPf chef-backup-`date +%Y-%m-%d`.tar.gz /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef'
-  echo "Copying Chef backup to $backupdir/"
+  echo "Copying Chef backup to $backupdir/."
   scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/
   echo "Starting chef-server and couchdb."
   ssh rack@$chefip 'sudo service chef-server start; sudo service couchdb start; sudo service chef-expander start; sudo service chef-client start; sudo service chef-server-webui start; sudo service chef-solr start' >/dev/null
@@ -108,5 +116,33 @@ fi
 
 #dump chef details to flat files
 
+echo '#################################################################'
 
- 
+if knife node list >/dev/null
+then
+  set -e
+  declare -A flags
+  flags=([default]=-Fj [node]=-lFj)
+  for topic in $topics 
+  do
+    outdir=$backupdir/$topic
+    flag=${flags[${topic}]:-${flags[default]}}
+    rm -rf $outdir
+    mkdir -p $outdir
+    echo "Dumping $topic data to json in $outdir."
+    for item in $(knife $topic list | awk {'print $1'}) 
+    do
+      if [ "$topic" != "cookbook" ] 
+      then
+        knife $topic show $flag $item > $outdir/$item.json
+      else
+        knife cookbook download $item -N --force -d $outdir >/dev/null
+      fi
+    done
+  done
+else
+  echo "knife not working or chef server not responding!"
+  exit 1
+fi
+
+echo "Backup located in $backupdir."
