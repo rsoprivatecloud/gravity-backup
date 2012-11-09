@@ -72,7 +72,6 @@ then
         cp -a $vmxmlloc $backupdir
       else
         echo "Did not find Chef VM XML file! Skipping."
-        break
       fi
       echo "Copying Chef VM and compressing the image. This may take some time."
       cat $vmdiskloc | gzip > $backupdir/$chefvm-backup.qcow2.gz
