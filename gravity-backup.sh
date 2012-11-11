@@ -252,4 +252,3 @@ then
   compactdb
 fi  
 
-#printext "Backup located in $backupdir."
