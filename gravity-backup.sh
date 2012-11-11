@@ -11,7 +11,7 @@ vmdiskloc="/opt/rpcs/chef-server.qcow2"
 #Location of VM's XML file
 vmxmlloc="/opt/rpcs/chef-server.xml"
 #Backup directory to dump backed up files
-backupdir="/backups"
+backupdir="/backup"
 #Number of minutes before removing old backup files and rerunning the backup
 # 1 day = 1440
 # 1 week = 10080
@@ -102,15 +102,17 @@ ssh -q rack@$chefip 'curl -S -s  -H "Content-Type: application/json" -X POST htt
  
 while ssh  rack@$chefip "curl -S -s http://localhost:5984/chef" | grep '"compact_running":true' >/dev/null
 do
-  sleep 2
-  printext "Compacting couchdb database."
+  sleep 5
 done
 }
 
-if [ ! -d $backupdir ]
+if [[ -n $FULL ||  -n $VMBACK  ||  -n $FILEBACK  ||  -n $CHEFDUMP ]]
 then
-  printext "$backupdir does not exist, creating."
-  mkdir $backupdir
+  if [ ! -d $backupdir ]
+  then
+    printext "$backupdir does not exist, creating."
+    mkdir $backupdir
+  fi
 fi
 
 #backup chef VM
@@ -132,7 +134,7 @@ then
         stats=$[ $stats + 1 ]
         if [ "$stats" == "10" ]
         then
-          echo "$chefvm not shutting down! $chefvm not backup up!"
+          echo "$chefvm not shutting down! $chefvm not backed up!"
           break 4
         fi
         ssh -q rack@$chefip 'sudo shutdown -h now'
@@ -142,7 +144,6 @@ then
       then
         if [ -f $vmxmlloc ]
         then
-          printext "Copying Chef VM XML file to $backupdir"
           cp -a $vmxmlloc $backupdir
         else
           printext "Did not find Chef VM XML file! Skipping."
@@ -151,7 +152,10 @@ then
         cat $vmdiskloc | gzip > $backupdir/$chefvm-backup.qcow2.gz
         printext "Starting $chefvm VM."
         virsh start $chefvm >/dev/null
-        printext "$chefvm VM backup complete! Find it here: $backupdir/$chefvm-backup.qcow2.gz"
+        printext "Archiving VM backup."
+        tar cPf $backupdir/chef-VM-backup-`date +%Y-%m-%d`.tar $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml >/dev/null
+        rm -rf $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml
+        printext "$chefvm VM backup complete! Find it here: $backupdir/chef-VM-backup-`date +%Y-%m-%d`.tar"
       else
         echo "$vmdiskloc does not exist!"
         exit 1
@@ -189,7 +193,7 @@ then
     ssh rack@$chefip "rm -rf /home/rack/chef-backup-*"
     rm -rf $backupdir/"chef-backup-*"
     printext "Creating new Chef backup. This may take some time."
-    ssh -q rack@$chefip 'sudo tar czPf chef-backup-`date +%Y-%m-%d`.tar.gz /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef'
+    ssh -q rack@$chefip 'sudo tar czPf chef-backup-`date +%Y-%m-%d`.tar.gz /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef' >/dev/null
     printext "Copying Chef backup to $backupdir/."
     scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/
     printext "Starting chef-server and couchdb."
@@ -209,13 +213,13 @@ then
     set -e
     declare -A flags
     flags=([default]=-Fj [node]=-lFj)
-    for topic in $topics 
+    for topic in $topics
     do
       outdir=$backupdir/$topic
       flag=${flags[${topic}]:-${flags[default]}}
       rm -rf $outdir
       mkdir -p $outdir
-      printext "Dumping $topic data to json in $outdir."
+      printext "Dumping $topic data."
       for item in $(knife $topic list | awk {'print $1'}) 
       do
         if [ "$topic" != "cookbook" ] 
@@ -225,6 +229,14 @@ then
           knife cookbook download $item -N --force -d $outdir >/dev/null
         fi
       done
+    done
+    printext "Archiving and compressing data."
+    set -e
+    for each in $topics
+    do
+      tar czPf $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz $backupdir/$each
+      rm -rf $backupdir/$each
+      printext "$each backup located here: $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz"
     done
   else
     echo "knife not working or chef server not responding!"
