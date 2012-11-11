@@ -20,6 +20,7 @@ mins="300"
 #Topics to backup for chef
 topics="node environment client role cookbook" # "client role cookbook"
 ################################################################
+#Author: rpawlik@rackspace.com
 
 usage()
 {
