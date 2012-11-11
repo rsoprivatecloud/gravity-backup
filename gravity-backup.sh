@@ -120,9 +120,9 @@ fi
 if [ "$FULL" = "1" ] || [ "$VMBACK" = "1" ]
 then
   filetyme=""
-  filetyme=$(find $backupdir -name '*qcow2.gz' -mmin +$mins)
+  filetyme=$(find $backupdir -name '*.tar' -mmin +$mins)
   buexist=""
-  buexist=$(find $backupdir -name '*qcow2.gz')
+  buexist=$(find $backupdir -name '*.tar')
   stats=0
   if [ "$buexist" = "$filetyme" ] 
   then
@@ -156,6 +156,18 @@ then
         tar cPf $backupdir/chef-VM-backup-`date +%Y-%m-%d`.tar $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml >/dev/null
         rm -rf $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml
         printext "$chefvm VM backup complete! Find it here: $backupdir/chef-VM-backup-`date +%Y-%m-%d`.tar"
+        stats=0
+        while ! ssh -q rack@$chefip 'hostname' >/dev/null
+        do
+          stats=$[ $stats + 1 ]
+          if [ "$stats" == "10" ]
+          then
+            echo "$chefvm not starting, please investigate!"
+            exit 1
+          fi
+          printext "Waiting for Chef VM to start..."
+          sleep 5
+        done
       else
         echo "$vmdiskloc does not exist!"
         exit 1
@@ -172,18 +184,6 @@ fi
 
 if [ "$FULL" = "1" ] || [ "$FILEBACK" = "1" ]
 then
-  stats=0
-  while ! ssh -q rack@$chefip 'hostname' >/dev/null
-  do
-    stats=$[ $stats + 1 ]
-    if [ "$stats" == "10" ]
-    then
-      echo "$chefvm not starting, please investigate!"
-      exit 1
-    fi
-    printext "Waiting for Chef VM to start..."
-    sleep 5
-  done
   if ssh rack@$chefip "find /home/rack/ -name  chef-backup-* -mmin $mins" >/dev/null
   then
     compactdb
@@ -198,7 +198,7 @@ then
     scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/
     printext "Starting chef-server and couchdb."
     ssh rack@$chefip 'sudo service chef-server start; sudo service couchdb start; sudo service chef-expander start; sudo service chef-client start; sudo service chef-server-webui start; sudo service chef-solr start' >/dev/null
-    printext "Chef file and couchdb backup complete. Find it here: `ls $backupdir'/chef-backup-'*`"
+    printext "Chef file and couchdb backup complete! Find it here: `ls $backupdir'/chef-backup-'*`"
   else
     echo "Chef file backup newer than $mins minutes, skipping."
   fi
@@ -251,4 +251,3 @@ then
   compactdb
 fi  
 
-#printext "Backup located in $backupdir."
