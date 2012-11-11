@@ -185,7 +185,11 @@ fi
 
 if [ "$FULL" = "1" ] || [ "$FILEBACK" = "1" ]
 then
-  if ssh rack@$chefip "find /home/rack/ -name  chef-backup-* -mmin $mins" >/dev/null
+  filetyme=""
+  filetyme=$(find $backupdir -name 'chef-backup-*.tar.gz' -mmin +$mins)
+  buexist=""
+  buexist=$(find $backupdir -name 'chef-backup-*.tar.gz')
+  if [ "$buexist" = "$filetyme" ]
   then
     compactdb
     printext "Shutting down chef-server and couchdb."
@@ -211,34 +215,43 @@ if [ "$FULL" = "1" ] || [ "$CHEFDUMP" = "1" ]
 then
   if knife node list >/dev/null
   then
-    set -e
-    declare -A flags
-    flags=([default]=-Fj [node]=-lFj)
-    for topic in $topics
-    do
-      outdir=$backupdir/$topic
-      flag=${flags[${topic}]:-${flags[default]}}
-      rm -rf $outdir
-      mkdir -p $outdir
-      printext "Dumping $topic data."
-      for item in $(knife $topic list | awk {'print $1'}) 
+    filetyme=""
+    filetyme=$(find $backupdir -name 'chef-dump-*.tar.gz' -mmin +$mins)
+    buexist=""
+    buexist=$(find $backupdir -name 'chef-dump-*.tar.gz')
+    if [ "$buexist" = "$filetyme" ]
+    then
+      set -e
+      declare -A flags
+      flags=([default]=-Fj [node]=-lFj)
+      for topic in $topics
       do
-        if [ "$topic" != "cookbook" ] 
-        then
-          knife $topic show $flag $item > $outdir/$item.json
-        else
-          knife cookbook download $item -N --force -d $outdir >/dev/null
-        fi
+        outdir=$backupdir/$topic
+        flag=${flags[${topic}]:-${flags[default]}}
+        rm -rf $outdir
+        mkdir -p $outdir
+        printext "Dumping $topic data."
+        for item in $(knife $topic list | awk {'print $1'}) 
+        do
+          if [ "$topic" != "cookbook" ] 
+          then
+            knife $topic show $flag $item > $outdir/$item.json
+          else
+            knife cookbook download $item -N --force -d $outdir >/dev/null
+          fi
+        done
       done
-    done
-    printext "Archiving and compressing data."
-    set -e
-    for each in $topics
-    do
-      tar czPf $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz $backupdir/$each
-      rm -rf $backupdir/$each
-      printext "$each backup located here: $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz"
-    done
+      printext "Archiving and compressing data."
+      set -e
+      for each in $topics
+      do
+        tar czPf $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz $backupdir/$each
+        rm -rf $backupdir/$each
+        printext "$each backup located here: $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz"
+      done
+    else
+      echo "Chef dump backup newer than $mins minutes, skipping."
+    fi
   else
     echo "knife not working or chef server not responding!"
     exit 1
