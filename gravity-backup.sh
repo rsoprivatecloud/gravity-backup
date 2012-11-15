@@ -194,13 +194,15 @@ then
     compactdb
     printext "Shutting down chef-server and couchdb."
     ssh rack@$chefip 'sudo service chef-server stop; sudo service couchdb stop; sudo service chef-expander stop; sudo service chef-client stop; sudo service chef-server-webui stop; sudo service chef-solr stop' >/dev/null 
-    printext "Removing old Chef backup."
+    printext "Removing old Chef backup (if it exists)."
     ssh rack@$chefip "rm -rf /home/rack/chef-backup-*"
     rm -rf $backupdir/"chef-backup-*"
     printext "Creating new Chef backup. This may take some time."
     ssh -q rack@$chefip 'sudo tar czPf chef-backup-`date +%Y-%m-%d`.tar.gz /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef' >/dev/null
     printext "Copying Chef backup to $backupdir/."
     scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/
+    printext "Removing temporary backup file."
+    ssh -q rack@$chefip "rm -rf /home/rack/chef-backup-*"
     printext "Starting chef-server and couchdb."
     ssh rack@$chefip 'sudo service chef-server start; sudo service couchdb start; sudo service chef-expander start; sudo service chef-client start; sudo service chef-server-webui start; sudo service chef-solr start' >/dev/null
     printext "Chef file and couchdb backup complete! Find it here: `ls $backupdir'/chef-backup-'*`"
