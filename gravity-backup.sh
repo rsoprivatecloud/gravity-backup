@@ -51,10 +51,8 @@ FILEBACK=
 CHEFDUMP=
 QUIET=
 COUCHDB=
-RESTOREFILE=
-RESTOREDUMP=
 
-while getopts "havfdrRcq" OPTION
+while getopts "havfdcq" OPTION
 do
         case $OPTION in
                 h)
