@@ -18,7 +18,9 @@ backupdir="/backup"
 # 30 days = 43200
 mins="300"
 #Topics to backup for chef
-topics="node environment client role cookbook" # "client role cookbook"
+topics="node environment client role" # "client role cookbook"
+#dsh group name for the compute nodes
+groupname="compute"
 ################################################################
 #Author: rpawlik@rackspace.com
 
@@ -32,9 +34,9 @@ This script backs up the Rackspace Chef server VM for Openstack deployments usin
 OPTIONS:
 -h Show this message
 -a Does every backup method.
--v Backs up the VM image and XML file.
--f Backs up the actual Chef and couchdb files.
--d Dumps the Chef configs to JSON and downloads all cookbooks.
+-v Backs up Chef VM image and XML file.
+-f Backs up  actual Chef and couchdb files.
+-d Dumps Chef configs to JSON.
 -c Compact couchdb database
 -q Quiet
 
@@ -49,8 +51,10 @@ FILEBACK=
 CHEFDUMP=
 QUIET=
 COUCHDB=
+RESTOREFILE=
+RESTOREDUMP=
 
-while getopts "havfdcq" OPTION
+while getopts "havfdrRcq" OPTION
 do
         case $OPTION in
                 h)
@@ -99,6 +103,10 @@ fi
 compactdb ()
 {
 printext "Compacting couchdb database."
+if !  ssh -q rack@$chefip "which curl" >/dev/null
+then
+  ssh rack@$chefip "sudo apt-get update && sudo apt-get install -y curl" >/dev/null
+fi
 ssh -q rack@$chefip 'curl -S -s  -H "Content-Type: application/json" -X POST http://localhost:5984/chef/_compact' >/dev/null
  
 while ssh  rack@$chefip "curl -S -s http://localhost:5984/chef" | grep '"compact_running":true' >/dev/null
@@ -116,6 +124,18 @@ then
   fi
 fi
 
+
+chefdown ()
+{
+ssh rack@$chefip 'sudo service chef-server stop; sudo service couchdb stop; sudo service chef-expander stop; sudo service chef-client stop; sudo service chef-server-webui stop; sudo service chef-solr stop' >/dev/null
+}
+
+
+chefup ()
+{
+ssh rack@$chefip 'sudo service chef-server start; sudo service couchdb start; sudo service chef-expander start; sudo service chef-client start; sudo service chef-server-webui start; sudo service chef-solr start' >/dev/null
+}
+
 #backup chef VM
 
 if [ "$FULL" = "1" ] || [ "$VMBACK" = "1" ]
@@ -127,9 +147,9 @@ then
   stats=0
   if [ "$buexist" = "$filetyme" ] 
   then
-    if ps auwx | grep $chefvm | grep -v grep | awk {'print $21'} | grep $chefvm >/dev/null
+    if ps auwx | grep $chefvm | grep -v grep  >/dev/null
     then
-      while ps auwx | grep $chefvm | grep -v grep | awk {'print $21'} | grep $chefvm >/dev/null
+      while ps auwx | grep $chefvm | grep -v grep  >/dev/null
       do
         printext "Shutting down $chefvm VM."
         stats=$[ $stats + 1 ]
@@ -193,7 +213,7 @@ then
   then
     compactdb
     printext "Shutting down chef-server and couchdb."
-    ssh rack@$chefip 'sudo service chef-server stop; sudo service couchdb stop; sudo service chef-expander stop; sudo service chef-client stop; sudo service chef-server-webui stop; sudo service chef-solr stop' >/dev/null 
+    chefdown
     printext "Removing old Chef backup (if it exists)."
     ssh rack@$chefip "rm -rf /home/rack/chef-backup-*"
     rm -rf $backupdir/"chef-backup-*"
@@ -204,7 +224,7 @@ then
     printext "Removing temporary backup file."
     ssh -q rack@$chefip "rm -rf /home/rack/chef-backup-*"
     printext "Starting chef-server and couchdb."
-    ssh rack@$chefip 'sudo service chef-server start; sudo service couchdb start; sudo service chef-expander start; sudo service chef-client start; sudo service chef-server-webui start; sudo service chef-solr start' >/dev/null
+    chefup
     printext "Chef file and couchdb backup complete! Find it here: `ls $backupdir'/chef-backup-'*`"
   else
     echo "Chef file backup newer than $mins minutes, skipping."
@@ -235,12 +255,7 @@ then
         printext "Dumping $topic data."
         for item in $(knife $topic list | awk {'print $1'}) 
         do
-          if [ "$topic" != "cookbook" ] 
-          then
-            knife $topic show $flag $item > $outdir/$item.json
-          else
-            knife cookbook download $item -N --force -d $outdir >/dev/null
-          fi
+          knife $topic show $flag $item > $outdir/$item.js
         done
       done
       printext "Archiving and compressing data."
