@@ -34,7 +34,7 @@ This script backs up the Rackspace Chef server VM for Openstack deployments usin
 OPTIONS:
 -h Show this message
 -a Does every backup method.
--v Backs up Chef VM image and XML file.
+-i Backs up Chef VM image and XML file.
 -f Backs up  actual Chef and couchdb files.
 -d Dumps Chef configs to JSON.
 -c Compact couchdb database
@@ -52,7 +52,7 @@ CHEFDUMP=
 QUIET=
 COUCHDB=
 
-while getopts "havfdcq" OPTION
+while getopts "haifdcq" OPTION
 do
         case $OPTION in
                 h)
@@ -62,7 +62,7 @@ do
                 a)
                   FULL="1"
                   ;;
-                v)
+                i)
                   VMBACK="1"
                   ;;
                 f)
@@ -167,8 +167,13 @@ then
         else
           printext "Did not find Chef VM XML file! Skipping."
         fi
+        if ! which pigz >/dev/null
+        then
+          printext "Installing pigz for compression."
+          apt-get -q update && apt-get install -y -q pigz 
+        fi
         printext "Copying Chef VM and compressing the image. This may take some time."
-        cat $vmdiskloc | gzip > $backupdir/$chefvm-backup.qcow2.gz
+        cat $vmdiskloc | pigz -p 4 > $backupdir/$chefvm-backup.qcow2.gz
         printext "Starting $chefvm VM."
         virsh start $chefvm >/dev/null
         printext "Archiving VM backup."
@@ -210,13 +215,18 @@ then
   if [ "$buexist" = "$filetyme" ]
   then
     compactdb
+    if ! ssh rack@$chefip  'which pigz' >/dev/null
+    then
+      printext "Installing pigz for compression on Chef server."
+      ssh rack@$chefip 'sudo apt-get update && sudo apt-get install -y pigz  > /dev/null 2>&1' 
+    fi
     printext "Shutting down chef-server and couchdb."
     chefdown
     printext "Removing old Chef backup (if it exists)."
     ssh rack@$chefip "rm -rf /home/rack/chef-backup-*"
-    rm -rf $backupdir/"chef-backup-*"
+#    rm -rf $backupdir/"chef-backup-*"
     printext "Creating new Chef backup. This may take some time."
-    ssh -q rack@$chefip 'sudo tar czPf chef-backup-`date +%Y-%m-%d`.tar.gz /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef' >/dev/null
+    ssh -q rack@$chefip 'sudo tar cPf - /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef | pigz -p 2 > chef-backup-`date +%Y-%m-%d`.tar.gz' >/dev/null
     printext "Copying Chef backup to $backupdir/."
     scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/
     printext "Removing temporary backup file."

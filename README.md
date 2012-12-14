@@ -13,7 +13,7 @@ OPTIONS:
 
 -a Does every backup method.
 
--v Backs up the VM image and XML file.
+-i Backs up the VM image and XML file.
 
 -f Backs up the actual Chef and couchdb files.
 
