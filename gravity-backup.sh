@@ -16,7 +16,7 @@ backupdir="/backup"
 # 1 day = 1440
 # 1 week = 10080
 # 30 days = 43200
-mins="300"
+mins="3"
 #Topics to backup for chef
 topics="node environment client role" # "client role cookbook"
 #dsh group name for the compute nodes
@@ -134,6 +134,15 @@ chefup ()
 ssh rack@$chefip 'sudo service chef-server start; sudo service couchdb start; sudo service chef-expander start; sudo service chef-client start; sudo service chef-server-webui start; sudo service chef-solr start' >/dev/null
 }
 
+
+mkbudir ()
+{
+if [ ! -d $backupdir/`date +%Y-%m-%d` ]
+then
+  mkdir $backupdir/`date +%Y-%m-%d`
+fi
+}
+
 #backup chef VM
 
 if [ "$FULL" = "1" ] || [ "$VMBACK" = "1" ]
@@ -179,7 +188,9 @@ then
         printext "Archiving VM backup."
         tar cPf $backupdir/chef-VM-backup-`date +%Y-%m-%d`.tar $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml >/dev/null
         rm -rf $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml
-        printext "$chefvm VM backup complete! Find it here: $backupdir/chef-VM-backup-`date +%Y-%m-%d`.tar"
+        mkbudir
+        mv $backupdir/chef-VM-backup-`date +%Y-%m-%d`.tar $backupdir/`date +%Y-%m-%d`
+        printext "$chefvm VM backup complete! Find it here: $backupdir/`date +%Y-%m-%d`/chef-VM-backup-`date +%Y-%m-%d`.tar"
         stats=0
         while ! ssh -q rack@$chefip 'hostname' >/dev/null
         do
@@ -222,18 +233,19 @@ then
     fi
     printext "Shutting down chef-server and couchdb."
     chefdown
-    printext "Removing old Chef backup (if it exists)."
+#    printext "Removing old Chef backup (if it exists)."
     ssh rack@$chefip "rm -rf /home/rack/chef-backup-*"
 #    rm -rf $backupdir/"chef-backup-*"
     printext "Creating new Chef backup. This may take some time."
     ssh -q rack@$chefip 'sudo tar cPf - /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef | pigz -p 2 > chef-backup-`date +%Y-%m-%d`.tar.gz' >/dev/null
-    printext "Copying Chef backup to $backupdir/."
-    scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/
+    printext "Copying Chef backup to $backupdir/`date +%Y-%m-%d`/."
+    mkbudir
+    scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/`date +%Y-%m-%d`/
     printext "Removing temporary backup file."
     ssh -q rack@$chefip "rm -rf /home/rack/chef-backup-*"
     printext "Starting chef-server and couchdb."
     chefup
-    printext "Chef file and couchdb backup complete! Find it here: `ls $backupdir'/chef-backup-'*`"
+    printext "Chef file and couchdb backup complete! Find it here: $backupdir/`date +%Y-%m-%d`/chef-backup-`date +%Y-%m-%d`.tar.gz"
   else
     echo "Chef file backup newer than $mins minutes, skipping."
   fi
@@ -258,7 +270,7 @@ then
       do
         outdir=$backupdir/$topic
         flag=${flags[${topic}]:-${flags[default]}}
-        rm -rf $outdir
+#        rm -rf $outdir
         mkdir -p $outdir
         printext "Dumping $topic data."
         for item in $(knife $topic list | awk {'print $1'}) 
@@ -272,7 +284,9 @@ then
       do
         tar czPf $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz $backupdir/$each
         rm -rf $backupdir/$each
-        printext "$each backup located here: $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz"
+        mkbudir
+        mv $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz $backupdir/`date +%Y-%m-%d`/
+        printext "$each backup located here: $backupdir/`date +%Y-%m-%d`/chef-dump-$each-`date +%Y-%m-%d`.tar.gz"
       done
     else
       echo "Chef dump backup newer than $mins minutes, skipping."
