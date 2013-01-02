@@ -3,26 +3,34 @@
 #
 #Tunable options##############################################
 #Name of the VM running Chef-Server
-chefvm="chef-server"
+#chefvm="chef-server"
 #Internal IP for the Chef Server VM
-chefip="169.254.123.2"
+#chefip="169.254.123.2"
 #Location of VM's disk
-vmdiskloc="/opt/rpcs/chef-server.qcow2"
+#vmdiskloc="/opt/rpcs/chef-server.qcow2"
 #Location of VM's XML file
-vmxmlloc="/opt/rpcs/chef-server.xml"
+#vmxmlloc="/opt/rpcs/chef-server.xml"
 #Backup directory to dump backed up files
-backupdir="/backup"
+#backupdir="/backup"
 #Number of minutes before removing old backup files and rerunning the backup
 # 1 day = 1440
 # 1 week = 10080
 # 30 days = 43200
-mins="3"
+#mins="3"
 #Topics to backup for chef
-topics="node environment client role" # "client role cookbook"
+#topics="node environment client role" # "client role cookbook"
 #dsh group name for the compute nodes
-groupname="compute"
+#groupname="compute"
 ################################################################
 #Author: rpawlik@rackspace.com
+
+if [ -f /etc/default/gravity-backup.conf ]
+then
+  source /etc/default/gravity-backup.conf
+else
+  echo "Gravity-backup configuration file not found! Please ensure the file /etc/default/gravity-backup.conf exists and is prperly formatted!"
+fi
+
 
 usage()
 {
