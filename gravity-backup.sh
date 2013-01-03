@@ -11,7 +11,15 @@
 #Location of VM's XML file
 #vmxmlloc="/opt/rpcs/chef-server.xml"
 #Backup directory to dump backed up files
+<<<<<<< HEAD
 #backupdir="/backup"
+=======
+backupdir="/backup"
+#number of CPU cores to use with compression
+corenum=4
+#number of vCPU cores on the chef VM to compress data (be careful with this!)
+vcorenum=2
+>>>>>>> 20e4faa673bc59a7b5b93c47badaa219571f99f6
 #Number of minutes before removing old backup files and rerunning the backup
 # 1 day = 1440
 # 1 week = 10080
@@ -190,7 +198,7 @@ then
           apt-get -q update && apt-get install -y -q pigz 
         fi
         printext "Copying Chef VM and compressing the image. This may take some time."
-        cat $vmdiskloc | pigz -p 4 > $backupdir/$chefvm-backup.qcow2.gz
+        cat $vmdiskloc | pigz -p $corenum > $backupdir/$chefvm-backup.qcow2.gz
         printext "Starting $chefvm VM."
         virsh start $chefvm >/dev/null
         printext "Archiving VM backup."
@@ -241,11 +249,9 @@ then
     fi
     printext "Shutting down chef-server and couchdb."
     chefdown
-#    printext "Removing old Chef backup (if it exists)."
     ssh rack@$chefip "rm -rf /home/rack/chef-backup-*"
-#    rm -rf $backupdir/"chef-backup-*"
     printext "Creating new Chef backup. This may take some time."
-    ssh -q rack@$chefip 'sudo tar cPf - /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef | pigz -p 2 > chef-backup-`date +%Y-%m-%d`.tar.gz' >/dev/null
+    ssh -q rack@$chefip "sudo tar cPf - /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef | pigz -p $vcorenum > chef-backup-`date +%Y-%m-%d`.tar.gz" >/dev/null
     printext "Copying Chef backup to $backupdir/`date +%Y-%m-%d`/."
     mkbudir
     scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/`date +%Y-%m-%d`/
@@ -278,7 +284,6 @@ then
       do
         outdir=$backupdir/$topic
         flag=${flags[${topic}]:-${flags[default]}}
-#        rm -rf $outdir
         mkdir -p $outdir
         printext "Dumping $topic data."
         for item in $(knife $topic list | awk {'print $1'}) 
