@@ -32,7 +32,7 @@ if [ -f /etc/default/gravity-backup.conf ]
 then
   source /etc/default/gravity-backup.conf
 else
-  echo "Gravity-backup configuration file not found! Please ensure the file /etc/default/gravity-backup.conf exists and is prperly formatted!"
+  echo "Gravity-backup configuration file not found! Please ensure the file /etc/default/gravity-backup.conf exists and is properly formatted!"
 fi
 
 
