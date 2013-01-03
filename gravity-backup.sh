@@ -11,15 +11,11 @@
 #Location of VM's XML file
 #vmxmlloc="/opt/rpcs/chef-server.xml"
 #Backup directory to dump backed up files
-<<<<<<< HEAD
 #backupdir="/backup"
-=======
-backupdir="/backup"
 #number of CPU cores to use with compression
-corenum=4
+#corenum=4
 #number of vCPU cores on the chef VM to compress data (be careful with this!)
-vcorenum=2
->>>>>>> 20e4faa673bc59a7b5b93c47badaa219571f99f6
+#vcorenum=2
 #Number of minutes before removing old backup files and rerunning the backup
 # 1 day = 1440
 # 1 week = 10080
