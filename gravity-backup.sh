@@ -15,7 +15,7 @@ usage()
 cat << EOF
 usage: $0 options
 
-This script backs up the Rackspace Chef server VM for Openstack deployments using three methods. In the first method, it shuts down and copies the VM disk to $backupdir. The second method logs into the VM and copies import directories for Chef and couchdb, it places the files in $backupdir. Finally, it dumps the specified chef configs to json in $backupdir.
+This script backs up the Rackspace Chef server VM for Openstack deployments using three methods. In the first method, it shuts down and copies the VM disk to $backupdir. The second method logs into the VM and copies import directories for Chef and couchdb, it places the files in $backupdir. Finally, it dumps the specified chef configs to json in $backupdir. The script needs a configuration file in /etc/default to work called "gravity-backup.conf". An example config file is included.
 
 OPTIONS:
 -h Show this message
@@ -287,3 +287,6 @@ then
   compactdb
 fi  
 
+#remove backups older than $budays
+
+find $backupdir/* -type d -ctime +$budays -exec rm -rf {} \; > /dev/null 2>&1

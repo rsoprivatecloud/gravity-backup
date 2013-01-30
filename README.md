@@ -5,7 +5,8 @@ Backup utility for the Openstack chef server VM.
 
 usage: ./gravity-backup.sh options
 
-This script backs up the Rackspace Chef server VM for Openstack deployments using three methods. In the first method, it shuts down and copies the VM disk to /backups. The second method logs into the VM and copies import directories for Chef and couchdb, it places the files in /backups. Finally, it dumps the specified chef configs to json in /backups.
+This script backs up the Rackspace Chef server VM for Openstack deployments using three methods. In the first method, it shuts down and copies the VM disk to $backupdir. The second method logs into the VM and copies import directories for Chef and couchdb, it places the files in $backupdir. Finally, it dumps the specified chef configs to json in $backupdir. The script needs a configuration file in /etc/default to work called "gravity-backup.conf". An example config file is included.
+
 
 OPTIONS:
 
