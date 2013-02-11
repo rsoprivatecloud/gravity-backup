@@ -133,71 +133,62 @@ fi
 
 if [ "$FULL" = "1" ] || [ "$VMBACK" = "1" ]
 then
-  filetyme=""
-  filetyme=$(find $backupdir -name '*.tar' -mmin +$mins)
-  buexist=""
-  buexist=$(find $backupdir -name '*.tar')
   stats=0
-  if [ "$buexist" = "$filetyme" ] 
+  if ps auwx | grep $chefvm | grep -v grep  >/dev/null
   then
-    if ps auwx | grep $chefvm | grep -v grep  >/dev/null
+    while ps auwx | grep $chefvm | grep -v grep  >/dev/null
+    do
+      printext "Shutting down $chefvm VM."
+      stats=$[ $stats + 1 ]
+      if [ "$stats" == "10" ]
+      then
+        echo "$chefvm not shutting down! $chefvm not backed up!"
+        break 4
+      fi
+      ssh -q rack@$chefip 'sudo shutdown -h now'
+      sleep 5
+    done
+    if [ -f $vmdiskloc ]
     then
-      while ps auwx | grep $chefvm | grep -v grep  >/dev/null
+      if [ -f $vmxmlloc ]
+      then
+        cp -a $vmxmlloc $backupdir
+      else
+        printext "Did not find Chef VM XML file! Skipping."
+      fi
+      if ! which pigz >/dev/null
+      then
+        printext "Installing pigz for compression."
+        apt-get -q update && apt-get install -y -q pigz 
+      fi
+      printext "Copying Chef VM and compressing the image. This may take some time."
+      cat $vmdiskloc | pigz -p $corenum > $backupdir/$chefvm-backup.qcow2.gz
+      printext "Starting $chefvm VM."
+      virsh start $chefvm >/dev/null
+      printext "Archiving VM backup."
+      tar cPf $backupdir/chef-VM-backup-`date +%Y-%m-%d`.tar $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml >/dev/null
+      rm -rf $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml
+      mkbudir
+      mv $backupdir/chef-VM-backup-`date +%Y-%m-%d`.tar $backupdir/`date +%Y-%m-%d`
+      printext "$chefvm VM backup complete! Find it here: $backupdir/`date +%Y-%m-%d`/chef-VM-backup-`date +%Y-%m-%d`.tar"
+      stats=0
+      while ! ssh -q rack@$chefip 'hostname' >/dev/null
       do
-        printext "Shutting down $chefvm VM."
         stats=$[ $stats + 1 ]
         if [ "$stats" == "10" ]
         then
-          echo "$chefvm not shutting down! $chefvm not backed up!"
-          break 4
+          echo "$chefvm not starting, please investigate!"
+          exit 1
         fi
-        ssh -q rack@$chefip 'sudo shutdown -h now'
+        printext "Waiting for Chef VM to start..."
         sleep 5
       done
-      if [ -f $vmdiskloc ]
-      then
-        if [ -f $vmxmlloc ]
-        then
-          cp -a $vmxmlloc $backupdir
-        else
-          printext "Did not find Chef VM XML file! Skipping."
-        fi
-        if ! which pigz >/dev/null
-        then
-          printext "Installing pigz for compression."
-          apt-get -q update && apt-get install -y -q pigz 
-        fi
-        printext "Copying Chef VM and compressing the image. This may take some time."
-        cat $vmdiskloc | pigz -p $corenum > $backupdir/$chefvm-backup.qcow2.gz
-        printext "Starting $chefvm VM."
-        virsh start $chefvm >/dev/null
-        printext "Archiving VM backup."
-        tar cPf $backupdir/chef-VM-backup-`date +%Y-%m-%d`.tar $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml >/dev/null
-        rm -rf $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml
-        mkbudir
-        mv $backupdir/chef-VM-backup-`date +%Y-%m-%d`.tar $backupdir/`date +%Y-%m-%d`
-        printext "$chefvm VM backup complete! Find it here: $backupdir/`date +%Y-%m-%d`/chef-VM-backup-`date +%Y-%m-%d`.tar"
-        stats=0
-        while ! ssh -q rack@$chefip 'hostname' >/dev/null
-        do
-          stats=$[ $stats + 1 ]
-          if [ "$stats" == "10" ]
-          then
-            echo "$chefvm not starting, please investigate!"
-            exit 1
-          fi
-          printext "Waiting for Chef VM to start..."
-          sleep 5
-        done
-      else
-        echo "$vmdiskloc does not exist!"
-        exit 1
-      fi
     else
-      echo "Chef server VM not running, doing nothing."
+      echo "$vmdiskloc does not exist!"
+      exit 1
     fi
   else
-     echo "$chefvm VM backup newer than $mins minutes, skipping."
+    echo "Chef server VM not running, doing nothing."
   fi
 fi
 
@@ -205,34 +196,25 @@ fi
 
 if [ "$FULL" = "1" ] || [ "$FILEBACK" = "1" ]
 then
-  filetyme=""
-  filetyme=$(find $backupdir -name 'chef-backup-*.tar.gz' -mmin +$mins)
-  buexist=""
-  buexist=$(find $backupdir -name 'chef-backup-*.tar.gz')
-  if [ "$buexist" = "$filetyme" ]
+  compactdb
+  if ! ssh rack@$chefip  'which pigz' >/dev/null
   then
-    compactdb
-    if ! ssh rack@$chefip  'which pigz' >/dev/null
-    then
-      printext "Installing pigz for compression on Chef server."
-      ssh rack@$chefip 'sudo apt-get update && sudo apt-get install -y pigz  > /dev/null 2>&1' 
-    fi
-    printext "Shutting down chef-server and couchdb."
-    chefdown
-    ssh rack@$chefip "rm -rf /home/rack/chef-backup-*"
-    printext "Creating new Chef backup. This may take some time."
-    ssh -q rack@$chefip "sudo tar cPf - /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef | pigz -p $vcorenum > chef-backup-`date +%Y-%m-%d`.tar.gz" >/dev/null
-    printext "Copying Chef backup to $backupdir/`date +%Y-%m-%d`/."
-    mkbudir
-    scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/`date +%Y-%m-%d`/
-    printext "Removing temporary backup file."
-    ssh -q rack@$chefip "rm -rf /home/rack/chef-backup-*"
-    printext "Starting chef-server and couchdb."
-    chefup
-    printext "Chef file and couchdb backup complete! Find it here: $backupdir/`date +%Y-%m-%d`/chef-backup-`date +%Y-%m-%d`.tar.gz"
-  else
-    echo "Chef file backup newer than $mins minutes, skipping."
+    printext "Installing pigz for compression on Chef server."
+    ssh rack@$chefip 'sudo apt-get update && sudo apt-get install -y pigz  > /dev/null 2>&1' 
   fi
+  printext "Shutting down chef-server and couchdb."
+  chefdown
+  ssh rack@$chefip "rm -rf /home/rack/chef-backup-*"
+  printext "Creating new Chef backup. This may take some time."
+  ssh -q rack@$chefip "sudo tar cPf - /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef | pigz -p $vcorenum > chef-backup-`date +%Y-%m-%d`.tar.gz" >/dev/null
+  printext "Copying Chef backup to $backupdir/`date +%Y-%m-%d`/."
+  mkbudir
+  scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/`date +%Y-%m-%d`/
+  printext "Removing temporary backup file."
+  ssh -q rack@$chefip "rm -rf /home/rack/chef-backup-*"
+  printext "Starting chef-server and couchdb."
+  chefup
+  printext "Chef file and couchdb backup complete! Find it here: $backupdir/`date +%Y-%m-%d`/chef-backup-`date +%Y-%m-%d`.tar.gz"
 fi
 
 #dump chef details to flat files
@@ -241,43 +223,34 @@ if [ "$FULL" = "1" ] || [ "$CHEFDUMP" = "1" ]
 then
   if knife node list >/dev/null
   then
-    filetyme=""
-    filetyme=$(find $backupdir -name 'chef-dump-*.tar.gz' -mmin +$mins)
-    buexist=""
-    buexist=$(find $backupdir -name 'chef-dump-*.tar.gz')
-    if [ "$buexist" = "$filetyme" ]
-    then
-      set -e
-      declare -A flags
-      flags=([default]=-Fj [node]=-lFj)
-      for topic in $topics
+    set -e
+    declare -A flags
+    flags=([default]=-Fj [node]=-lFj)
+    for topic in $topics
+    do
+      outdir=$backupdir/$topic
+      flag=${flags[${topic}]:-${flags[default]}}
+      mkdir -p $outdir
+      printext "Dumping $topic data."
+      for item in $(knife $topic list | awk {'print $1'}) 
       do
-        outdir=$backupdir/$topic
-        flag=${flags[${topic}]:-${flags[default]}}
-        mkdir -p $outdir
-        printext "Dumping $topic data."
-        for item in $(knife $topic list | awk {'print $1'}) 
-        do
-          knife $topic show $flag $item > $outdir/$item.js
-        done
+        knife $topic show $flag $item > $outdir/$item.js
       done
-      printext "Archiving and compressing data."
-      set -e
-      for each in $topics
-      do
-        tar czPf $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz $backupdir/$each
-        rm -rf $backupdir/$each
-        mkbudir
-        mv $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz $backupdir/`date +%Y-%m-%d`/
-        printext "$each backup located here: $backupdir/`date +%Y-%m-%d`/chef-dump-$each-`date +%Y-%m-%d`.tar.gz"
-      done
-    else
-      echo "Chef dump backup newer than $mins minutes, skipping."
-    fi
-  else
-    echo "knife not working or chef server not responding!"
-    exit 1
+    done
+    printext "Archiving and compressing data."
+    set -e
+    for each in $topics
+    do
+      tar czPf $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz $backupdir/$each
+      rm -rf $backupdir/$each
+      mkbudir
+      mv $backupdir/chef-dump-$each-`date +%Y-%m-%d`.tar.gz $backupdir/`date +%Y-%m-%d`/
+      printext "$each backup located here: $backupdir/`date +%Y-%m-%d`/chef-dump-$each-`date +%Y-%m-%d`.tar.gz"
+    done
   fi
+else
+  echo "knife not working or chef server not responding!"
+  exit 1
 fi
 
 #Compact couchdb only
@@ -289,4 +262,4 @@ fi
 
 #remove backups older than $budays
 
-find $backupdir/* -type d -ctime +$budays -exec rm -rf {} \; > /dev/null 2>&1
+find $backupdir/* -type d -mtime +$budays -exec rm -rf {} \; > /dev/null 2>&1
