@@ -1,102 +1,115 @@
 #!/bin/bash
 #
-#Author: rpawlik@rackspace.com
+# Author: Ramsey Pawlik (rpawlik@rackspace.com)
+# Modified: June 11, 2013 / Steven Deaton (steven.deaton@rackspace.com)
+#
 
-if [ -f /etc/default/gravity-backup.conf ]
-then
-  source /etc/default/gravity-backup.conf
+#CONF="/etc/default/gravity-backup.conf";
+CONF="./gravity-backup.conf";
+
+# Check that configuration file exists... if it does, source it...
+if [ -r ${CONF} ]; then
+    . ${CONF}
+# Otherwise, show error and exit...
 else
-  echo "Gravity-backup configuration file not found! Please ensure the file /etc/default/gravity-backup.conf exists and is properly formatted!"
+    echo "The configuration file (${CONF}) was not found.";
+    echo "Please ensure this file exists and is properly formatted.";
+    exit;
 fi
 
-
-usage()
-{
-cat << EOF
-usage: $0 options
-
-This script backs up the Rackspace Chef server VM for Openstack deployments using three methods. In the first method, it shuts down and copies the VM disk to $backupdir. The second method logs into the VM and copies import directories for Chef and couchdb, it places the files in $backupdir. Finally, it dumps the specified chef configs to json in $backupdir. The script needs a configuration file in /etc/default to work called "gravity-backup.conf". An example config file is included.
-
-OPTIONS:
--h Show this message
--a Does every backup method.
--i Backs up Chef VM image and XML file.
--f Backs up  actual Chef and couchdb files.
--d Dumps Chef configs to JSON.
--c Compact couchdb database
--q Quiet
-
-EXAMPLE:
-sh $0 -a -q
-EOF
+usage() {
+    echo "";
+    echo -e "\e[1;37m$0 \e[37m<\e[33moption(s)\e[37m>";
+    echo "";
+    echo "Summary:";
+    echo "This script backs up the Rackspace Chef server VM for OpenStack";
+    echo "deployments using three methods.";
+    echo "";
+    echo "Method 1: Shutdown / copy the VM disk to ${backupdir}.";
+    echo "Method 2: Log into VM, copy important files/directories for Chef";
+    echo "and CouchDB into the ${backupdir} directory.";
+    echo "Method 3: Dump specified Chef configuration data (in JSON format)";
+    echo "to the ${backupdir} directory.";
+    echo "";
+    echo "NOTE: This script needs a configuration files at: ${CONF}";
+    echo "An example configuration file is included.";
+    echo "";
+    echo "Available options:";
+    echo "";
+    echo -e "\t\e[37m-a\t\e[33m=\t\e[37mBackup using all available methods.";
+    echo -e "\t\e[37m-c\t\e[33m=\t\e[37mCompact CouchDB database. [DEPRECATED]";
+    echo -e "\t\e[37m-d\t\e[33m=\t\e[37mDump Chef configuration data in JSON format.";
+    echo -e "\t\e[37m-f\t\e[33m=\t\e[37mBackup Chef and CouchDB files.";
+    echo -e "\t\e[37m-h\t\e[33m=\t\e[37mShow this message and exit.";
+    echo -e "\t\e[37m-i\t\e[33m=\t\e[37mBackup Chef VM image and related XML file.";
+    echo -e "\t\e[37m-q\t\e[33m=\t\e[37mLower verbosity / be more quiet.";
+    echo "";
+    echo "Example:";
+    echo "$0 -a -q";
+    # Reset color and formatting attributes.
+    echo -e "\e[0m";
+    exit;
 }
 
-FULL=
-VMBACK=
-FILEBACK=
-CHEFDUMP=
-QUIET=
-COUCHDB=
+FULL="";
+VMBACK="";
+FILEBACK="";
+CHEFDUMP="";
+QUIET="";
+COUCHDB="";
 
-while getopts "haifdcq" OPTION
-do
+usage;
+
+while getopts "haifdcq" OPTION; do
         case $OPTION in
                 h)
-                  usage
-                  exit 1
+                  usage();
                   ;;
                 a)
-                  FULL="1"
+                  FULL="1";
                   ;;
                 i)
-                  VMBACK="1"
+                  VMBACK="1";
                   ;;
                 f)
-                  FILEBACK="1"
+                  FILEBACK="1";
                   ;;
                 d)
-                  CHEFDUMP="1"
+                  CHEFDUMP="1";
                  ;;
 		c)
-		  COUCHDB="1"
+		  COUCHDB="1";
 		 ;;
 		q)
-		  QUIET="1"
+		  QUIET="1";
 		 ;;
-                                                                                                                                           
+                *)
+                 usage();
+                 ;;
         esac
 done
 
-if [ -z $FULL ] && [ -z $VMBACK ] && [ -z $FILEBACK ] && [ -z $CHEFDUMP ] && [ -z $COUCHDB ]
-then
-  echo "Please specify a valid option!"
-  usage
-  exit 1
+if [ -z $FULL ] && [ -z $VMBACK ] && [ -z $FILEBACK ] && [ -z $CHEFDUMP ] && [ -z $COUCHDB ]; then
+    echo "Please specify a valid option!"
+    usage();
 fi
 
-printext () 
-{
-
-if [ ! "$QUIET" = "1" ]
-then
-  echo "$*"
-fi
-
+printext() {
+    if [ ! "$QUIET" = "1" ]; then
+        echo "$*"
+    fi
 }
 
-compactdb ()
-{
-printext "Compacting couchdb database."
-if !  ssh -q rack@$chefip "which curl" >/dev/null
-then
-  ssh rack@$chefip "sudo apt-get update && sudo apt-get install -y curl" >/dev/null
-fi
-ssh -q rack@$chefip 'curl -S -s  -H "Content-Type: application/json" -X POST http://localhost:5984/chef/_compact' >/dev/null
- 
-while ssh  rack@$chefip "curl -S -s http://localhost:5984/chef" | grep '"compact_running":true' >/dev/null
-do
-  sleep 5
-done
+compactdb() {
+    printext "Compacting couchdb database."
+    if !  ssh -q rack@$chefip "which curl" >/dev/null
+    then
+        ssh rack@$chefip "sudo apt-get update && sudo apt-get install -y curl" >/dev/null
+    fi
+    ssh -q rack@$chefip 'curl -S -s  -H "Content-Type: application/json" -X POST http://localhost:5984/chef/_compact' >/dev/null
+    while ssh  rack@$chefip "curl -S -s http://localhost:5984/chef" | grep '"compact_running":true' >/dev/null; do
+        sleep 5
+    done
 }
 
 if [[ -n $FULL ||  -n $VMBACK  ||  -n $FILEBACK  ||  -n $CHEFDUMP ]]
@@ -129,8 +142,7 @@ then
 fi
 }
 
-#backup chef VM
-
+# Backup chef VM
 if [ "$FULL" = "1" ] || [ "$VMBACK" = "1" ]
 then
   stats=0
