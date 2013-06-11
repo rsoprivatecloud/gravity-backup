@@ -7,10 +7,8 @@
 #CONF="/etc/default/gravity-backup.conf";
 CONF="./gravity-backup.conf";
 
-# Check that configuration file exists... if it does, source it...
 if [ -r ${CONF} ]; then
     . ${CONF}
-# Otherwise, show error and exit...
 else
     echo "The configuration file (${CONF}) was not found.";
     echo "Please ensure this file exists and is properly formatted.";
@@ -58,38 +56,30 @@ CHEFDUMP="";
 QUIET="";
 COUCHDB="";
 
-usage;
+#usage;
 
 while getopts "haifdcq" OPTION; do
         case $OPTION in
                 h)
-                  usage();
-                  ;;
+                  usage(); ;;
                 a)
-                  FULL="1";
-                  ;;
+                  FULL="1"; ;;
                 i)
-                  VMBACK="1";
-                  ;;
+                  VMBACK="1"; ;;
                 f)
-                  FILEBACK="1";
-                  ;;
+                  FILEBACK="1"; ;;
                 d)
-                  CHEFDUMP="1";
-                 ;;
+                  CHEFDUMP="1"; ;;
 		c)
-		  COUCHDB="1";
-		 ;;
+		  COUCHDB="1"; ;;
 		q)
-		  QUIET="1";
-		 ;;
+		  QUIET="1"; ;;
                 *)
-                 usage();
-                 ;;
+                 usage(); ;;
         esac
 done
 
-if [ -z $FULL ] && [ -z $VMBACK ] && [ -z $FILEBACK ] && [ -z $CHEFDUMP ] && [ -z $COUCHDB ]; then
+if [ $# -eq 0 ]; then
     echo "Please specify a valid option!"
     usage();
 fi
