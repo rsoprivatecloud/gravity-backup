@@ -104,7 +104,7 @@ done
 [ -d ${backupdir}/${DATE} ] || mkdir -p ${backupdir}/${DATE};
 # - Check that the Chef Server VM has the key in place for the root user.
 if [ ! $(ssh ${chefip} "echo $EUID";) -eq 0 ]; then
-    echo "Copy over the rack user auth key file to the root user,";
+    echo "Copy the rack ssh key file to the root user's .ssh directory,";
     echo "changing perms as needed.";
     exit;
 fi
