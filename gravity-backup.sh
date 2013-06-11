@@ -1,11 +1,36 @@
 #!/bin/bash
+# -------------------------
+# Summary:
 #
+# This script backs up the Rackspace Chef Server VM for OpenStack
+# deployments using three methods.
+#
+# The default backup directory is used here for documentation and
+# explanation purposes, but is set later via the configuration file.
+# BAKDIR="/var/chef-backup"
+#
+# Method 1: Shutdown / copy VM disk files to ${BAKDIR}.
+#
+# Method 2: Log into VM, copy important files/directories for Chef
+# and CouchDB/PostgreSQL into the ${BAKDIR} directory.
+#
+# Method 3: Dump specified Chef configuration data (in JSON format)
+# to the ${BAKDIR} directory.
+#
+# NOTE: This script needs a configuration file. An example is included.
+# -------------------------
 # Author: Ramsey Pawlik (rpawlik@rackspace.com)
-# Modified: June 11, 2013 / Steven Deaton (steven.deaton@rackspace.com)
-#
+# Last Modified: June 11, 2013 / Steven Deaton (steven.deaton@rackspace.com)
+# -------------------------
 
+CHEFDUMP="";
 #CONF="/etc/default/gravity-backup.conf";
 CONF="./gravity-backup.conf";
+COUCHDB="";
+FILEBACK="";
+FULL="";
+QUIET="";
+VMBACK="";
 
 if [ -r ${CONF} ]; then
     . ${CONF}
@@ -17,72 +42,44 @@ fi
 
 usage() {
     echo "";
-    echo -e "\e[1;37m$0 \e[37m<\e[33moption(s)\e[37m>";
-    echo "";
-    echo "Summary:";
-    echo "This script backs up the Rackspace Chef server VM for OpenStack";
-    echo "deployments using three methods.";
-    echo "";
-    echo "Method 1: Shutdown / copy the VM disk to ${backupdir}.";
-    echo "Method 2: Log into VM, copy important files/directories for Chef";
-    echo "and CouchDB into the ${backupdir} directory.";
-    echo "Method 3: Dump specified Chef configuration data (in JSON format)";
-    echo "to the ${backupdir} directory.";
-    echo "";
-    echo "NOTE: This script needs a configuration files at: ${CONF}";
-    echo "An example configuration file is included.";
+    echo -e "\e[1;34mGravity Backup \e[37m(\e[33mChef Server backup utility\e[37m)";
+    echo -e "\e[37m$0 \e[37m<\e[33moption(s)\e[37m>";
     echo "";
     echo "Available options:";
     echo "";
-    echo -e "\t\e[37m-a\t\e[33m=\t\e[37mBackup using all available methods.";
-    echo -e "\t\e[37m-c\t\e[33m=\t\e[37mCompact CouchDB database. [DEPRECATED]";
-    echo -e "\t\e[37m-d\t\e[33m=\t\e[37mDump Chef configuration data in JSON format.";
-    echo -e "\t\e[37m-f\t\e[33m=\t\e[37mBackup Chef and CouchDB files.";
-    echo -e "\t\e[37m-h\t\e[33m=\t\e[37mShow this message and exit.";
-    echo -e "\t\e[37m-i\t\e[33m=\t\e[37mBackup Chef VM image and related XML file.";
-    echo -e "\t\e[37m-q\t\e[33m=\t\e[37mLower verbosity / be more quiet.";
+    echo -e "\t\e[37m-a\t\e[33m=\t\e[32mBackup using all available methods.";
+    echo -e "\t\e[37m-c\t\e[33m=\t\e[32mCompact CouchDB database. [DEPRECATED]";
+    echo -e "\t\e[37m-d\t\e[33m=\t\e[32mDump Chef configuration data in JSON format.";
+    echo -e "\t\e[37m-f\t\e[33m=\t\e[32mBackup Chef and CouchDB files.";
+    echo -e "\t\e[37m-h\t\e[33m=\t\e[32mShow this message and exit.";
+    echo -e "\t\e[37m-i\t\e[33m=\t\e[32mBackup Chef VM image and related XML file.";
+    echo -e "\t\e[37m-p\t\e[33m=\t\e[32mBackup PostgreSQL database-dumped files.";
+    echo -e "\t\e[37m-q\t\e[33m=\t\e[32mLower verbosity / be more quiet.";
     echo "";
-    echo "Example:";
-    echo "$0 -a -q";
+    echo -e "\t\e[36mExample\e[37m:";
+    echo -e "\t$0 -a -q";
     # Reset color and formatting attributes.
     echo -e "\e[0m";
     exit;
 }
 
-FULL="";
-VMBACK="";
-FILEBACK="";
-CHEFDUMP="";
-QUIET="";
-COUCHDB="";
-
-#usage;
-
-while getopts "haifdcq" OPTION; do
+while getopts "acdfhipq" OPTION; do
         case $OPTION in
-                h)
-                  usage(); ;;
-                a)
-                  FULL="1"; ;;
-                i)
-                  VMBACK="1"; ;;
-                f)
-                  FILEBACK="1"; ;;
-                d)
-                  CHEFDUMP="1"; ;;
-		c)
-		  COUCHDB="1"; ;;
-		q)
-		  QUIET="1"; ;;
-                *)
-                 usage(); ;;
+                a) FULL="1"; ;;
+		c) COUCHDB="1"; ;;
+                d) CHEFDUMP="1"; ;;
+                f) FILEBACK="1"; ;;
+                h) usage; ;;
+                i) VMBACK="1"; ;;
+                p) PSQL="1";
+                    echo -e "\n\e[7;31m<<<<< This functionality is under development - try again later. >>>>>\e[0m";
+                    usage; ;;
+		q) QUIET="1"; ;;
+                *) usage; ;;
         esac
 done
 
-if [ $# -eq 0 ]; then
-    echo "Please specify a valid option!"
-    usage();
-fi
+[ $# -gt 0 ] || usage;
 
 printext() {
     if [ ! "$QUIET" = "1" ]; then
