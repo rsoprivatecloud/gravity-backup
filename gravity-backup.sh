@@ -93,110 +93,116 @@ while getopts "acdfhipq" OPTION; do
         esac
 done
 
+# Do a few sanity checks ...
+# - Make sure user running this is root or exit.
+[ $EUID -eq 0 ] || echo "You must be root to run this script."; exit;
+# - Make sure something has been passed in, as far as options go.
 [ $# -gt 0 ] || usage;
+# - Make sure backup directory root directory exists.
+[ -d ${backupdir} ] || mkdir -p ${backupdir};
+# - Make sure backup directory for today exists.
+[ -d ${backupdir}/${DATE} ] || mkdir -p ${backupdir}/${DATE};
+# - Check that the Chef Server VM has the key in place for the root user.
+if [ ! $(ssh ${chefip} "echo $EUID";) -eq 0 ]; then
+    echo "Copy over the rack user auth key file to the root user,";
+    echo "changing perms as needed.";
+    exit;
+fi
 
 printext() { [ "$QUIET" = "1" ] || echo "$*"; }
 
 compactdb() {
     printext "Compacting couchdb database."
-    if ! ssh -q rack@$chefip "which curl" >/dev/null; then
-        ssh rack@$chefip "sudo apt-get update && sudo apt-get install -y curl" >/dev/null
+    if ! ssh -q $chefip "which curl" >/dev/null; then
+        ssh $chefip "apt-get update && sudo apt-get install -y curl" >/dev/null
     fi
-    ssh -q rack@$chefip 'curl -S -s  -H "Content-Type: application/json" -X POST http://localhost:5984/chef/_compact' >/dev/null
-    while ssh rack@$chefip "curl -S -s http://localhost:5984/chef" | grep '"compact_running":true' >/dev/null; do
+    ssh -q $chefip 'curl -S -s  -H "Content-Type: application/json" -X POST http://localhost:5984/chef/_compact' >/dev/null
+    while ssh $chefip "curl -S -s http://localhost:5984/chef" | grep '"compact_running":true' >/dev/null; do
         sleep 5
     done
 }
 
-if [[ -n $FULL ||  -n $VMBACK  ||  -n $FILEBACK  ||  -n $CHEFDUMP ]]; then
-    [ -d ${backupdir} ] || mkdir -p ${backupdir};
-fi
-
 chefdown() {
-    ssh rack@$chefip 'sudo service chef-server stop; sudo service couchdb stop; sudo service chef-expander stop; sudo service chef-client stop; sudo service chef-server-webui stop; sudo service chef-solr stop' >/dev/null
+    ssh $chefip 'sudo service chef-server stop; sudo service couchdb stop; sudo service chef-expander stop; sudo service chef-client stop; sudo service chef-server-webui stop; sudo service chef-solr stop' >/dev/null
 }
 
 chefup() {
-    ssh rack@$chefip 'sudo service chef-server start; sudo service couchdb start; sudo service chef-expander start; sudo service chef-client start; sudo service chef-server-webui start; sudo service chef-solr start' >/dev/null
+    ssh $chefip 'sudo service chef-server start; sudo service couchdb start; sudo service chef-expander start; sudo service chef-client start; sudo service chef-server-webui start; sudo service chef-solr start' >/dev/null
 }
-
-mkbudir() { [ -d $backupdir/${DATE} ] || mkdir -p ${backupdir}/${DATE}; }
 
 # Backup chef VM
 if [ "$FULL" = "1" ] || [ "$VMBACK" = "1" ]; then
-  stats=0
-  if ps auwx | grep $chefvm | grep -v grep  >/dev/null
-  then
-    while ps auwx | grep $chefvm | grep -v grep >/dev/null
-    do
-      printext "Shutting down $chefvm VM."
-      stats=$[ $stats + 1 ]
-      if [ "$stats" == "10" ]; then
-        echo "$chefvm not shutting down! $chefvm not backed up!"
-        break 4
-      fi
-      ssh -q rack@$chefip 'sudo shutdown -h now'
-      sleep 5
-    done
-    if [ -f $vmdiskloc ]; then
-      if [ -f $vmxmlloc ]; then
-        cp -a $vmxmlloc $backupdir
-      else
-        printext "Did not find Chef VM XML file! Skipping."
-      fi
-      if ! which pigz >/dev/null
-      then
-        printext "Installing pigz for compression."
-        apt-get -q update && apt-get install -y -q pigz 
-      fi
-      printext "Copying Chef VM and compressing the image. This may take some time."
-      cat $vmdiskloc | pigz -p $corenum > $backupdir/$chefvm-backup.qcow2.gz
-      printext "Starting $chefvm VM."
-      virsh start $chefvm >/dev/null
-      printext "Archiving VM backup."
-      tar cPf $backupdir/chef-VM-backup-${DATE}.tar $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml >/dev/null
-      rm -f $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml
-      mkbudir
-      mv $backupdir/chef-VM-backup-${DATE}.tar $backupdir/${DATE}
-      printext "$chefvm VM backup complete! Find it here: $backupdir/${DATE}/chef-VM-backup-${DATE}.tar"
-      stats=0
-      while ! ssh -q rack@$chefip 'hostname' >/dev/null
-      do
-        stats=$[ $stats + 1 ]
-        if [ "$stats" == "10" ]; then
-          echo "$chefvm not starting, please investigate!"
-          exit 1
+    stats=0
+    if ps auwx | grep $chefvm | grep -v grep  >/dev/null
+    then
+        while ps auwx | grep $chefvm | grep -v grep >/dev/null
+        do
+            printext "Shutting down $chefvm VM."
+            stats=$[ $stats + 1 ]
+            if [ "$stats" == "10" ]; then
+                echo "$chefvm not shutting down! $chefvm not backed up!"
+                break 4
+            fi
+            ssh -q $chefip 'sudo shutdown -h now'
+            sleep 5
+        done
+        if [ -f $vmdiskloc ]; then
+            if [ -f $vmxmlloc ]; then
+                cp -a $vmxmlloc $backupdir;
+            else
+                printext "Did not find Chef VM XML file! Skipping."
+            fi
+            if ! which pigz >/dev/null
+            then
+                printext "Installing pigz for compression."
+                apt-get -q update && apt-get install -y -q pigz
+            fi
+            printext "Copying Chef VM and compressing the image. This may take some time."
+            cat $vmdiskloc | pigz -p $corenum > $backupdir/$chefvm-backup.qcow2.gz
+            printext "Starting $chefvm VM."
+            virsh start $chefvm >/dev/null
+            printext "Archiving VM backup."
+            tar cPf $backupdir/chef-VM-backup-${DATE}.tar $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml >/dev/null
+            rm -f $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml
+            mv $backupdir/chef-VM-backup-${DATE}.tar $backupdir/${DATE}/
+            printext "$chefvm VM backup complete! Find it here: $backupdir/${DATE}/chef-VM-backup-${DATE}.tar"
+            stats=0
+            while ! ssh -q $chefip 'hostname' >/dev/null
+            do
+                stats=$[ $stats + 1 ]
+                if [ "$stats" == "10" ]; then
+                    echo "$chefvm not starting, please investigate!"
+                    exit 1
+                fi
+                printext "Waiting for Chef VM to start..."
+                sleep 5
+            done
+        else
+            echo "$vmdiskloc does not exist!"
+            exit 1
         fi
-        printext "Waiting for Chef VM to start..."
-        sleep 5
-      done
     else
-      echo "$vmdiskloc does not exist!"
-      exit 1
+        echo "Chef server VM not running, doing nothing."
     fi
-  else
-    echo "Chef server VM not running, doing nothing."
-  fi
 fi
 
 # Get Chef configuration files.
 if [ "$FULL" = "1" ] || [ "$FILEBACK" = "1" ]; then
     compactdb
-    if ! ssh rack@$chefip  'which pigz' >/dev/null
+    if ! ssh $chefip 'which pigz' >/dev/null
     then
         printext "Installing pigz for compression on Chef server."
-        ssh rack@$chefip 'sudo apt-get update && sudo apt-get install -y pigz  > /dev/null 2>&1' 
+        ssh $chefip 'sudo apt-get update && sudo apt-get install -y pigz  > /dev/null 2>&1' 
     fi
     printext "Shutting down chef-server and couchdb."
     chefdown
-    ssh rack@$chefip "rm -rf /home/rack/chef-backup-*"
+    ssh $chefip "rm -rf /home/rack/chef-backup-*"
     printext "Creating new Chef backup. This may take some time."
-    ssh -q rack@$chefip "sudo tar cPf - /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef | pigz -p $vcorenum > chef-backup-${DATE}.tar.gz" >/dev/null
+    ssh -q $chefip "tar cPf - /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef | pigz -p $vcorenum > chef-backup-${DATE}.tar.gz" >/dev/null
     printext "Copying Chef backup to $backupdir/${DATE}/."
-    mkbudir
-    scp -q rack@$chefip:/home/rack/chef-backup-* $backupdir/${DATE}/
+    scp -q $chefip:/home/rack/chef-backup-* $backupdir/${DATE}/
     printext "Removing temporary backup file."
-    ssh -q rack@$chefip "rm -rf /home/rack/chef-backup-*"
+    ssh -q $chefip "rm -rf /home/rack/chef-backup-*"
     printext "Starting chef-server and couchdb."
     chefup
     printext "Chef file and couchdb backup complete! Find it here: $backupdir/${DATE}/chef-backup-${DATE}.tar.gz"
@@ -223,7 +229,6 @@ if [ "$FULL" = "1" ] || [ "$CHEFDUMP" = "1" ]; then
         for each in $topics; do
             tar czPf $backupdir/chef-dump-$each-${DATE}.tar.gz $backupdir/$each
             rm -rf $backupdir/$each
-            mkbudir
             mv $backupdir/chef-dump-$each-${DATE}.tar.gz $backupdir/${DATE}/
             printext "$each backup located here: $backupdir/${DATE}/chef-dump-$each-${DATE}.tar.gz"
         done
