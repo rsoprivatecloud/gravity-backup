@@ -98,7 +98,7 @@ done
 
 # Do a few sanity checks ...
 # - Make sure user running this is root or exit.
-#[ $EUID -eq 0 ] || echo "You must be root to run this script."; exit;
+[ $EUID -eq 0 ] || echo "You must be root to run this script."; exit;
 # - Make sure something has been passed in, as far as options go.
 [ $# -gt 0 ] || usage;
 # - Make sure backup directory root directory exists.
