@@ -63,6 +63,9 @@ usage() {
     echo "";
     echo -e "\t\e[37m-a\t\e[33m=\t\e[32mBackup using all available methods.";
     echo -e "\t\e[37m-c\t\e[33m=\t\e[32mCompact CouchDB database. [DEPRECATED]";
+    echo -e "\t\t\tThis option (relating to CouchDB) is only valid for";
+    echo -e "\t\t\tChef Server versions below 11.x, whereas after that,";
+    echo -e "\t\t\tPostgreSQL is used.)";
     echo -e "\t\e[37m-d\t\e[33m=\t\e[32mDump Chef configuration data in JSON format.";
     echo -e "\t\e[37m-f\t\e[33m=\t\e[32mBackup Chef and CouchDB files.";
     echo -e "\t\e[37m-h\t\e[33m=\t\e[32mShow this message and exit.";
@@ -86,7 +89,7 @@ while getopts "acdfhipq" OPTION; do
                 h) usage; ;;
                 i) VMBACK="1"; ;;
                 p) PSQL="1";
-                    echo -e "\n\e[7;31m<<<<< This functionality is under development - try again later. >>>>>\e[0m";
+                    echo -e "\n\e[31;47m<<<<< This functionality is under development - try again later. >>>>>\e[0m";
                     usage; ;;
 		q) QUIET="1"; ;;
                 *) usage; ;;
@@ -95,7 +98,7 @@ done
 
 # Do a few sanity checks ...
 # - Make sure user running this is root or exit.
-[ $EUID -eq 0 ] || echo "You must be root to run this script."; exit;
+#[ $EUID -eq 0 ] || echo "You must be root to run this script."; exit;
 # - Make sure something has been passed in, as far as options go.
 [ $# -gt 0 ] || usage;
 # - Make sure backup directory root directory exists.
@@ -157,7 +160,7 @@ if [ "$FULL" = "1" ] || [ "$VMBACK" = "1" ]; then
             printext "Starting $chefvm VM."
             virsh start $chefvm >/dev/null
             printext "Archiving VM backup."
-            tar cPf $backupdir/chef-VM-backup-${DATE}.tar $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml >/dev/null
+            tar zcPf $backupdir/chef-VM-backup-${DATE}.tgz $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml >/dev/null
             rm -f $backupdir/$chefvm-backup.qcow2.gz $backupdir/*.xml
             mv $backupdir/chef-VM-backup-${DATE}.tar $backupdir/${DATE}/
             printext "$chefvm VM backup complete! Find it here: $backupdir/${DATE}/chef-VM-backup-${DATE}.tar"
@@ -188,11 +191,8 @@ if [ "$FULL" = "1" ] || [ "$FILEBACK" = "1" ]; then
     chefdown
     ssh $chefip "rm -rf /home/rack/chef-backup-*"
     printext "Creating new Chef backup. This may take some time."
-    ssh -q $chefip "tar zcPf chef-backup-${DATE}.tgz /etc/couchdb /var/lib/chef /var/lib/couchdb /var/cache/chef /var/log/chef /var/log/couchdb /etc/chef" >/dev/null
-    printext "Copying Chef backup to $backupdir/${DATE}/."
-    scp -q $chefip:/home/rack/chef-backup-* $backupdir/${DATE}/
-    printext "Removing temporary backup file."
-    ssh -q $chefip "rm -rf /home/rack/chef-backup-*"
+    ssh -q $chefip "tar cPf - /etc/chef-server /opt/chef-server/embedded/cookbooks /var/opt/chef-server/{bookshelf,chef-expander,chef-pedant,chef-server-webui,erchef,rabbitmq}/etc /var/opt/chef-server/chef-solr/{etc,home/conf,jetty/etc,jetty/webapps/solr.war} /var/opt/chef-server/nginx/{ca,etc,html} /var/opt/chef-server/postgresql/data/*{conf,opts} /var/log/chef-server/{bookshelf,erchef,nginx}" | gzip -9 > ${backupdir}/${DATE}/chef-backup-${DATE}.tgz
+    gzip -t ${backupdir}/${DATE}/chef-backup-${DATE}.tgz 2>/dev/null || echo "There is a problem with the backup file. Please re-run."; exit;
     printext "Starting chef-server and couchdb."
     chefup
     printext "Chef file and couchdb backup complete! Find it here: $backupdir/${DATE}/chef-backup-${DATE}.tgz"
@@ -217,7 +217,7 @@ if [ "$FULL" = "1" ] || [ "$CHEFDUMP" = "1" ]; then
         printext "Archiving and compressing data."
         set -e
         for each in $topics; do
-            tar czPf $backupdir/chef-dump-$each-${DATE}.tgz $backupdir/$each
+            tar zcPf $backupdir/chef-dump-$each-${DATE}.tgz $backupdir/$each
             rm -rf $backupdir/$each
             mv $backupdir/chef-dump-$each-${DATE}.tgz $backupdir/${DATE}/
             printext "$each backup located here: $backupdir/${DATE}/chef-dump-$each-${DATE}.tgz"
